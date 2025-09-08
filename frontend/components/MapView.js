@@ -1,10 +1,10 @@
-// frontend/components/MapView.js - FIXED TO SHOW ALL VENUES
+// frontend/components/MapView.js - WITH REAL EVENT COORDINATES & 5 DAY RANGE
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { Clock, Star, DollarSign, Users, ExternalLink, Navigation, AlertCircle } from 'lucide-react';
+import { Clock, Star, DollarSign, Users, ExternalLink, Navigation, AlertCircle, Music, Calendar, Ticket, MapPin } from 'lucide-react';
 
 // You'll need to get a Mapbox token from https://mapbox.com
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -13,54 +13,61 @@ export default function MapView({ itinerary }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const [selectedVenue, setSelectedVenue] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
   const markers = useRef([]);
+  const eventMarkers = useRef([]);
 
-useEffect(() => {
-  console.log('\n🗺️ [MAPVIEW] useEffect triggered');
-  console.log('   Itinerary:', itinerary?.title);
-  console.log('   Venues count:', itinerary?.venues?.length);
-  
-  if (map.current) {
-    console.log('   🧹 Cleaning up old map');
-    markers.current.forEach(marker => marker.remove());
-    markers.current = [];
-    map.current.remove();
-    map.current = null;
-  }
+  useEffect(() => {
+    console.log('\n🗺️ [MAPVIEW] useEffect triggered');
+    console.log('   Itinerary:', itinerary?.title);
+    console.log('   Venues count:', itinerary?.venues?.length);
+    
+    if (map.current) {
+      console.log('   🧹 Cleaning up old map');
+      markers.current.forEach(marker => marker.remove());
+      eventMarkers.current.forEach(marker => marker.remove());
+      markers.current = [];
+      eventMarkers.current = [];
+      map.current.remove();
+      map.current = null;
+    }
 
-  if (!itinerary?.venues || itinerary.venues.length === 0) {
-    console.log('   ⚠️ No venues, exiting');
-    return;
-  }
+    if (!itinerary?.venues || itinerary.venues.length === 0) {
+      console.log('   ⚠️ No venues, exiting');
+      return;
+    }
 
-  console.log('\n📍 [MAPVIEW] Creating map with venues:');
-  itinerary.venues.forEach((v, i) => {
-    console.log(`   ${i+1}. ${v.name} at (${v.lat}, ${v.lng})`);
-  });
+    console.log('\n📍 [MAPVIEW] Creating map with venues:');
+    itinerary.venues.forEach((v, i) => {
+      console.log(`   ${i+1}. ${v.name} at (${v.lat}, ${v.lng})`);
+      if (v.nearbyEvents?.length) {
+        console.log(`      📌 Has ${v.nearbyEvents.length} nearby events (next 5 days)`);
+      }
+    });
 
-  map.current = new mapboxgl.Map({
-    container: mapContainer.current,
-    style: 'mapbox://styles/mapbox/streets-v12',
-    center: [itinerary.venues[0]?.lng || -73.9855, itinerary.venues[0]?.lat || 40.7580],
-    zoom: 12
-  });
-  console.log('   ✅ Map created');
-  map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [itinerary.venues[0]?.lng || -73.9855, itinerary.venues[0]?.lat || 40.7580],
+      zoom: 12
+    });
+    console.log('   ✅ Map created');
+    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-    // Add ALL venues as markers immediately (don't wait for map load)
+    // Add ALL main venues as markers
     itinerary.venues.forEach((venue, index) => {
       console.log(`Adding marker ${index + 1}:`, venue.name, 'at', venue.lat, venue.lng);
       
-      // Create custom marker element
+      // Create custom marker element for main venues
       const el = document.createElement('div');
       el.className = 'custom-marker';
       el.style.width = '40px';
       el.style.height = '40px';
       el.style.cursor = 'pointer';
-      el.style.zIndex = 1000 + index; // Ensure markers are on top
+      el.style.zIndex = 1000 + index;
       
-      // Add inner HTML with styling
+      // Add inner HTML with styling for main venues
       el.innerHTML = `
         <div style="
           width: 100%;
@@ -109,6 +116,7 @@ useEffect(() => {
             <div style="padding: 8px; font-family: system-ui; background: white;">
               <strong style="color: #000; font-size: 14px;">${venue.name}</strong><br/>
               <span style="color: #666; font-size: 12px;">${venue.category}</span>
+              ${venue.nearbyEvents?.length ? `<br/><span style="color: #7c3aed; font-size: 11px;">🎟️ ${venue.nearbyEvents.length} events nearby (5 days)</span>` : ''}
             </div>
           `)
           .addTo(map.current);
@@ -121,6 +129,7 @@ useEffect(() => {
       // Add click handler
       el.addEventListener('click', () => {
         setSelectedVenue(venue);
+        setSelectedEvent(null);
         map.current.flyTo({
           center: [venue.lng, venue.lat],
           zoom: 16,
@@ -130,7 +139,146 @@ useEffect(() => {
       });
 
       markers.current.push(marker);
+
+      // Add nearby event markers for this venue
+      if (venue.nearbyEvents && venue.nearbyEvents.length > 0) {
+        console.log(`   Adding ${venue.nearbyEvents.length} event markers for ${venue.name}:`);
+        
+        venue.nearbyEvents.forEach((event, eventIdx) => {
+          // USE ACTUAL EVENT COORDINATES
+          let eventLat, eventLng;
+          
+          if (event.lat && event.lng) {
+            // Use real coordinates from the event
+            eventLat = event.lat;
+            eventLng = event.lng;
+            console.log(`      Event ${eventIdx + 1}: "${event.name}" at real location (${eventLat}, ${eventLng})`);
+          } else {
+            // Fallback to circle pattern if no coordinates (shouldn't happen with Ticketmaster data)
+            console.log(`      Event ${eventIdx + 1}: "${event.name}" - No coordinates, using circle pattern`);
+            const angle = (eventIdx / venue.nearbyEvents.length) * 2 * Math.PI;
+            const radius = 0.003; // About 300m at this latitude
+            eventLat = venue.lat + radius * Math.sin(angle);
+            eventLng = venue.lng + radius * Math.cos(angle);
+          }
+
+          // Calculate actual distance from venue to event
+          const distance = event.lat && event.lng ? 
+            Math.round(calculateDistance(venue.lat, venue.lng, event.lat, event.lng) * 1000) : 
+            null;
+
+          // Create event marker with different style
+          const eventEl = document.createElement('div');
+          eventEl.className = 'event-marker';
+          eventEl.style.width = '30px';
+          eventEl.style.height = '30px';
+          eventEl.style.cursor = 'pointer';
+          eventEl.style.zIndex = 900 + eventIdx;
+          eventEl.style.transition = 'transform 0.2s';
+          
+          // Different colors based on event type
+          let bgColor = '#ef4444'; // Red default
+          let icon = '🎵'; // Default music icon
+          
+          if (event.eventType?.toLowerCase().includes('sport')) {
+            bgColor = '#10b981';
+            icon = '⚽';
+          } else if (event.eventType?.toLowerCase().includes('comedy')) {
+            bgColor = '#f59e0b';
+            icon = '😄';
+          } else if (event.eventType?.toLowerCase().includes('theatre') || event.eventType?.toLowerCase().includes('theater')) {
+            bgColor = '#8b5cf6';
+            icon = '🎭';
+          } else if (event.eventType?.toLowerCase().includes('family')) {
+            bgColor = '#3b82f6';
+            icon = '👨‍👩‍👧‍👦';
+          }
+          
+          eventEl.innerHTML = `
+            <div style="
+              width: 100%;
+              height: 100%;
+              background: ${bgColor};
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+              border: 2px solid white;
+              opacity: 0.85;
+              font-size: 14px;
+            " onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${icon}</div>
+          `;
+
+          // Create marker for event at its actual location
+          const eventMarker = new mapboxgl.Marker(eventEl, { 
+            anchor: 'center',
+            offset: [0, 0] 
+          })
+            .setLngLat([eventLng, eventLat])
+            .addTo(map.current);
+
+          // Add popup on hover for event
+          const eventPopup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 20,
+            className: 'event-popup'
+          });
+
+          eventEl.addEventListener('mouseenter', () => {
+            const eventDate = event.startDate ? new Date(event.startDate) : null;
+            const daysFromNow = eventDate ? 
+              Math.ceil((eventDate - new Date()) / (1000 * 60 * 60 * 24)) : null;
+            
+            eventPopup.setLngLat([eventLng, eventLat])
+              .setHTML(`
+                <div style="padding: 10px; font-family: system-ui; background: white; max-width: 250px;">
+                  <strong style="color: #000; font-size: 13px;">${event.name}</strong><br/>
+                  <span style="color: #666; font-size: 11px;">${event.eventType}</span><br/>
+                  ${eventDate ? `<span style="color: #7c3aed; font-size: 11px;">📅 ${eventDate.toLocaleDateString()} at ${eventDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span><br/>` : ''}
+                  ${daysFromNow !== null ? `<span style="color: #0ea5e9; font-size: 11px;">⏰ In ${daysFromNow} day${daysFromNow !== 1 ? 's' : ''}</span><br/>` : ''}
+                  <span style="color: #059669; font-size: 11px;">💵 ${event.price}</span><br/>
+                  <span style="color: #dc2626; font-size: 11px;">📍 ${event.venueName || 'Venue'}</span>
+                  ${distance !== null ? `<br/><span style="color: #6b7280; font-size: 11px;">📏 ${distance}m from ${venue.name}</span>` : ''}
+                  ${event.soldOut ? '<br/><span style="color: #dc2626; font-size: 11px; font-weight: bold;">SOLD OUT</span>' : '<br/><span style="color: #059669; font-size: 11px;">🎫 Tickets Available</span>'}
+                </div>
+              `)
+              .addTo(map.current);
+          });
+
+          eventEl.addEventListener('mouseleave', () => {
+            eventPopup.remove();
+          });
+
+          // Add click handler for event
+          eventEl.addEventListener('click', () => {
+            setSelectedEvent(event);
+            setSelectedVenue(null);
+            map.current.flyTo({
+              center: [eventLng, eventLat],
+              zoom: 17,
+              duration: 800
+            });
+          });
+
+          eventMarkers.current.push(eventMarker);
+        });
+      }
     });
+
+    // Helper function to calculate distance between two points
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Radius of the Earth in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c; // Distance in km
+    }
 
     // Wait for map to load before adding routes and fitting bounds
     map.current.on('load', async () => {
@@ -140,10 +288,21 @@ useEffect(() => {
       const coordinates = itinerary.venues.map(v => [v.lng, v.lat]);
       await drawRealRoute(coordinates);
 
-      // Fit map to show ALL venues with padding
+      // Fit map to show ALL venues AND events with padding
       const bounds = new mapboxgl.LngLatBounds();
+      
+      // Add all venue locations
       itinerary.venues.forEach(venue => {
         bounds.extend([venue.lng, venue.lat]);
+        
+        // Also add event locations to bounds
+        if (venue.nearbyEvents) {
+          venue.nearbyEvents.forEach(event => {
+            if (event.lat && event.lng) {
+              bounds.extend([event.lng, event.lat]);
+            }
+          });
+        }
       });
       
       // Fit bounds with good padding to see all markers
@@ -288,10 +447,14 @@ useEffect(() => {
       .venue-popup {
         font-family: system-ui, -apple-system, sans-serif;
       }
-      .venue-popup .mapboxgl-popup-content {
+      .venue-popup .mapboxgl-popup-content,
+      .event-popup .mapboxgl-popup-content {
         padding: 0;
         border-radius: 8px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      }
+      .event-marker:hover {
+        transform: scale(1.2);
       }
     `;
     document.head.appendChild(style);
@@ -299,7 +462,9 @@ useEffect(() => {
     return () => {
       style.remove();
       markers.current.forEach(marker => marker.remove());
+      eventMarkers.current.forEach(marker => marker.remove());
       markers.current = [];
+      eventMarkers.current = [];
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -320,47 +485,37 @@ useEffect(() => {
     return `https://www.google.com/maps/dir/${waypoints}`;
   };
 
+  // Count total nearby events
+  const totalNearbyEvents = itinerary?.venues?.reduce((acc, venue) => 
+    acc + (venue.nearbyEvents?.length || 0), 0) || 0;
+
   return (
     <div className="relative h-full">
       <div ref={mapContainer} className="h-full" />
-          {/* ADD THIS DEBUG BUTTON */}
-    <button 
-      onClick={() => {
-        console.log('\n🔍 DEBUG CHECK:');
-        console.log('Markers in array:', markers.current.length);
-        markers.current.forEach((m, i) => {
-          const pos = m.getLngLat();
-          console.log(`Marker ${i+1}: ${pos.lat}, ${pos.lng}`);
-        });
-        console.log('Venues in data:', itinerary?.venues?.length);
-        itinerary?.venues?.forEach((v, i) => {
-          console.log(`Venue ${i+1}: ${v.name} at ${v.lat}, ${v.lng}`);
-        });
-      }}
-      className="absolute bottom-4 left-4 bg-red-500 text-white px-3 py-2 rounded z-50 text-sm"
-    >
-      Debug Markers
-    </button>
-      {/* Data Source Indicator */}
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-md p-2 text-xs">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${itinerary.dataSource === 'live' ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
-          <span className="text-gray-600">
-            {itinerary.dataSource === 'live' ? 'Live Data' : 'Demo Mode'}
-          </span>
+
+      {/* Event Discovery Indicator */}
+      {totalNearbyEvents > 0 && (
+        <div className="absolute top-4 left-4 bg-white rounded-lg shadow-md p-2">
+          <div className="flex items-center gap-2">
+            <Music className="w-4 h-4 text-purple-600 animate-pulse" />
+            <span className="text-sm text-gray-700">
+              {totalNearbyEvents} events nearby (next 5 days)
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Venue List Panel */}
-<div className="absolute top-16 left-4 bg-white rounded-xl shadow-lg p-3 max-w-xs">
-  <h3 className="font-bold text-sm mb-2 text-gray-900">{itinerary.title}</h3>
-  <div className="space-y-1 max-h-40 overflow-y-auto">
-    {itinerary.venues?.map((venue, idx) => (
-      <div 
-        key={idx}
-        className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer hover:bg-gray-50 p-1 rounded"
-                      onClick={() => {
+      <div className="absolute top-16 left-4 bg-white rounded-xl shadow-lg p-3 max-w-xs">
+        <h3 className="font-bold text-sm mb-2 text-gray-900">{itinerary.title}</h3>
+        <div className="space-y-1 max-h-40 overflow-y-auto">
+          {itinerary.venues?.map((venue, idx) => (
+            <div 
+              key={idx}
+              className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer hover:bg-gray-50 p-1 rounded"
+              onClick={() => {
                 setSelectedVenue(venue);
+                setSelectedEvent(null);
                 map.current.flyTo({
                   center: [venue.lng, venue.lat],
                   zoom: 16
@@ -371,6 +526,11 @@ useEffect(() => {
                 {venue.order}
               </div>
               <span className="flex-1 truncate">{venue.name}</span>
+              {venue.nearbyEvents?.length > 0 && (
+                <span className="text-purple-500 text-xs">
+                  🎟️ {venue.nearbyEvents.length}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -390,8 +550,95 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Selected Event Card */}
+      {selectedEvent && (
+        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
+          <button
+            onClick={() => setSelectedEvent(null)}
+            className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded-full"
+          >
+            ✕
+          </button>
+          
+          {selectedEvent.imageUrl && (
+            <img 
+              src={selectedEvent.imageUrl} 
+              alt={selectedEvent.name}
+              className="w-full h-32 object-cover rounded-lg mb-3"
+            />
+          )}
+          
+          <div className="flex items-start justify-between mb-2">
+            <div>
+              <h3 className="font-bold text-lg text-gray-900">{selectedEvent.name}</h3>
+              <p className="text-sm text-gray-600">{selectedEvent.eventType}</p>
+            </div>
+            <div className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-sm font-bold">
+              Event
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+            {selectedEvent.startDate && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-4 h-4" />
+                <span>{new Date(selectedEvent.startDate).toLocaleDateString()}</span>
+              </div>
+            )}
+            {selectedEvent.price && (
+              <div className="flex items-center gap-1">
+                <DollarSign className="w-4 h-4" />
+                <span>{selectedEvent.price}</span>
+              </div>
+            )}
+            {selectedEvent.venueName && (
+              <div className="flex items-center gap-1">
+                <MapPin className="w-4 h-4" />
+                <span>{selectedEvent.venueName}</span>
+              </div>
+            )}
+          </div>
+
+          {selectedEvent.soldOut ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+              <p className="text-sm text-red-700">🚫 This event is sold out</p>
+            </div>
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3">
+              <p className="text-sm text-green-700">🎫 Tickets available!</p>
+            </div>
+          )}
+
+          {selectedEvent.description && (
+            <p className="text-xs text-gray-500 mb-3">{selectedEvent.description}</p>
+          )}
+
+          <div className="flex gap-2">
+            {selectedEvent.eventUrl && (
+              <button 
+                onClick={() => window.open(selectedEvent.eventUrl, '_blank')}
+                className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
+              >
+                <Ticket className="w-4 h-4" />
+                Get Tickets
+              </button>
+            )}
+            <button 
+              className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition flex items-center justify-center gap-2"
+              onClick={() => {
+                // Add to itinerary logic here
+                alert('Feature coming soon: Add to itinerary');
+              }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Add to Plan
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Venue Details Card */}
-      {selectedVenue && (
+      {selectedVenue && !selectedEvent && (
         <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
           <button
             onClick={() => setSelectedVenue(null)}
@@ -431,12 +678,6 @@ useEffect(() => {
                 <span>{selectedVenue.price}</span>
               </div>
             )}
-            {selectedVenue.crowdLevel && (
-              <div className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
-                <span>{selectedVenue.crowdLevel}</span>
-              </div>
-            )}
             {selectedVenue.walkTime > 0 && (
               <div className="flex items-center gap-1">
                 <Clock className="w-4 h-4" />
@@ -445,9 +686,24 @@ useEffect(() => {
             )}
           </div>
 
-          {selectedVenue.tips && (
+          {selectedVenue.nearbyEvents && selectedVenue.nearbyEvents.length > 0 && (
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-3">
-              <p className="text-sm text-purple-700">💡 {selectedVenue.tips}</p>
+              <p className="text-sm text-purple-700 font-semibold mb-1">
+                🎟️ {selectedVenue.nearbyEvents.length} events happening nearby (5 days):
+              </p>
+              <div className="space-y-1">
+                {selectedVenue.nearbyEvents.slice(0, 3).map((event, idx) => (
+                  <div key={idx} className="text-xs text-purple-600">
+                    • {event.name} - {event.price}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedVenue.tips && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3">
+              <p className="text-sm text-blue-700">💡 {selectedVenue.tips}</p>
             </div>
           )}
 
@@ -473,32 +729,27 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
-        <button 
-          onClick={() => {
-            const url = `${window.location.origin}/itinerary/${Date.now()}`;
-            navigator.clipboard.writeText(url);
-            alert('Share link copied!');
-          }}
-          className="bg-white p-2 rounded-lg shadow-lg hover:shadow-xl transition" 
-          title="Share"
-        >
-          🔗
-        </button>
-        <button 
-          onClick={() => window.open(getAllVenuesMapUrl(), '_blank')}
-          className="bg-white p-2 rounded-lg shadow-lg hover:shadow-xl transition"
-          title="Open in Google Maps"
-        >
-          🗺️
-        </button>
-        <button 
-          className="bg-white p-2 rounded-lg shadow-lg hover:shadow-xl transition"
-          title="Save"
-        >
-          ⭐
-        </button>
+      {/* Legend */}
+      <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-md p-3">
+        <h4 className="text-xs font-bold text-gray-700 mb-2">Map Legend</h4>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-purple-600 rounded-full"></div>
+            <span className="text-xs text-gray-600">Your stops</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs">🎵</div>
+            <span className="text-xs text-gray-600">Music events</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-xs">⚽</div>
+            <span className="text-xs text-gray-600">Sports</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center text-xs">😄</div>
+            <span className="text-xs text-gray-600">Comedy</span>
+          </div>
+        </div>
       </div>
 
       <style jsx>{`
