@@ -52,27 +52,55 @@ export default function Home() {
     setMessages(prev => [...prev, { type: 'bot', content: 'thinking', isThinking: true }]);
 
     try {
-      console.log('   📡 Sending to backend...');
-      const response = await axios.post(`${API_URL}/api/generate-itinerary`, {
-        prompt: userMessage
+      console.log('   📡 Sending to MCP-backed endpoint...');
+      // Use MCP search-venues for now with a default center (Times Square)
+      const mcpRes = await axios.post(`${API_URL}/api/mcp/search-venues`, {
+        query: userMessage,
+        lat: 40.7580,
+        lng: -73.9855,
+        radius: 1500,
+        limit: 5
       });
 
       console.log('   ✅ Response received');
       setMessages(prev => prev.filter(m => !m.isThinking));
 
-      if (response.data.success) {
-        const itinerary = response.data.itinerary;
-        
+      if (mcpRes.data?.success) {
+        const data = mcpRes.data.data || {};
+        const venues = (data.venues || []).map((v, idx) => ({
+          id: v.id,
+          name: v.name,
+          category: v.category,
+          lat: v.lat,
+          lng: v.lng,
+          address: v.address,
+          rating: v.rating,
+          user_ratings_total: v.userRatingsTotal,
+          price_level: v.priceLevel,
+          order: idx + 1,
+          walkTime: idx === 0 ? 0 : 5
+        }));
+
+        const itinerary = {
+          title: 'Nearby Picks',
+          description: `Top ${venues.length} places near Times Square based on your request.`,
+          duration: '1-2 hours',
+          vibe: 'mixed',
+          numberOfStops: venues.length,
+          totalDistance: (venues.length * 0.5).toFixed(1),
+          venues
+        };
+
         console.log(`   Venues received: ${itinerary.venues?.length}`);
         setCurrentItinerary(itinerary);
         
         setMessages(prev => [...prev, { 
           type: 'bot', 
-          content: `I've created "${itinerary.title}" for you! ${itinerary.description}. Ready to explore?`,
-          itinerary: itinerary
+          content: `I've found some spots for you!`,
+          itinerary
         }]);
 
-        toast.success('Itinerary created! 🎉');
+        toast.success('Results ready! 🎉');
       }
     } catch (error) {
       console.error('   ❌ Error:', error.response?.data || error);
@@ -104,7 +132,7 @@ export default function Home() {
     toast.loading(`Adjusting for ${reason}...`);
     
     try {
-      const response = await axios.post(`${API_URL}/api/replan`, {
+      const response = await axios.post(`${API_URL}/api/mcp/replan`, {
         reason,
         currentItinerary,
         location: { lat: 40.7580, lng: -73.9855 }

@@ -10,9 +10,45 @@ dotenv.config();
 
 const app = express();
 const cache = new NodeCache({ stdTTL: 7200 }); // 2-hour cache
+const mcpClient = require('./mcpClient');
 
 app.use(cors());
 app.use(express.json());
+
+// ===================== MCP Passthrough Endpoints ====================
+app.post('/api/mcp/search-venues', async (req, res) => {
+  try {
+    const { query, lat, lng, category, radius, limit } = req.body || {};
+    const result = await mcpClient.callTool('search-venues', { query, lat, lng, category, radius, limit });
+    const text = result?.content?.[0]?.text || '{}';
+    return res.json({ success: true, data: JSON.parse(text) });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message || String(e) });
+  }
+});
+
+app.post('/api/mcp/search-events', async (req, res) => {
+  try {
+    const { lat, lng, radiusKm, keyword, size } = req.body || {};
+    const result = await mcpClient.callTool('search-events', { lat, lng, radiusKm, keyword, size });
+    const text = result?.content?.[0]?.text || '{}';
+    return res.json({ success: true, data: JSON.parse(text) });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message || String(e) });
+  }
+});
+
+// MCP replan passthrough
+app.post('/api/mcp/replan', async (req, res) => {
+  try {
+    const { reason, currentItinerary, location } = req.body || {};
+    const result = await mcpClient.callTool('replan', { reason, currentItinerary, location });
+    const text = result?.content?.[0]?.text || '{}';
+    return res.json(JSON.parse(text));
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message || String(e) });
+  }
+});
 
 // ======================= OpenAI =======================
 const openai = new OpenAI({
