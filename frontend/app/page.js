@@ -1,10 +1,10 @@
-// frontend/app/page.js - Updated to show descriptions
+// frontend/app/page.js - Updated for MCP Architecture
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
-import { Send, MapPin, Loader2, Clock, RefreshCw, Sparkles, Navigation, Info } from 'lucide-react';
+import { Send, MapPin, Loader2, Clock, RefreshCw, Sparkles, Navigation, Info, AlertCircle, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 
@@ -18,18 +18,27 @@ const SAMPLE_PROMPTS = [
   "Plan a romantic evening in NYC",
   "I have 3 hours this afternoon, what should I do?",
   "Find me a chill Sunday brunch and walk combo",
-  "Show me the best local spots for a first date"
+  "Show me the best local spots for a first date",
+  "I want to visit Madison Square Garden then Brooklyn Bridge",
+  "Find concerts happening this weekend",
+  "Show me events near Times Square tonight",
+  "Plan a 3-day NYC adventure",
+  "Quick coffee and pastry near Central Park"
 ];
 
 export default function Home() {
   const [messages, setMessages] = useState([
-    { type: 'bot', content: "Hey! I'm PlanMate 🗺️ Tell me what kind of experience you're looking for and I'll create the perfect itinerary!" }
+    { 
+      type: 'bot', 
+      content: "Hey! I'm PlanMate 🗺️ Tell me what kind of experience you're looking for and I'll create the perfect itinerary! I can plan anything from a quick 2-hour adventure to a full week exploration." 
+    }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentItinerary, setCurrentItinerary] = useState(null);
   const [view, setView] = useState('chat'); // 'chat' or 'map'
-  const [expandedVenue, setExpandedVenue] = useState(null); // Track which venue description is expanded
+  const [expandedVenue, setExpandedVenue] = useState(null);
+  const [showQualityDetails, setShowQualityDetails] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -41,117 +50,137 @@ export default function Home() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  if (!input.trim() || loading) return;
 
-    const userMessage = input;
-    setInput('');
-    setMessages(prev => [...prev, { type: 'user', content: userMessage }]);
-    setLoading(true);
+  const userMessage = input;
+  setInput('');
+  setMessages(prev => [...prev, { type: 'user', content: userMessage }]);
+  setLoading(true);
 
-    console.log('\n🎯 [FRONTEND] New request:', userMessage);
-    setMessages(prev => [...prev, { type: 'bot', content: 'thinking', isThinking: true }]);
+  console.log('\n🎯 [FRONTEND] New request:', userMessage);
+  setMessages(prev => [...prev, { 
+    type: 'bot', 
+    content: 'thinking', 
+    isThinking: true,
+    thinkingMessage: 'Multiple AI agents are collaborating to create your perfect itinerary...'
+  }]);
 
-    try {
-      console.log('   📡 Sending to MCP-backed endpoint...');
-      // Use MCP search-venues for now with a default center (Times Square)
-      const mcpRes = await axios.post(`${API_URL}/api/mcp/search-venues`, {
-        query: userMessage,
-        lat: 40.7580,
-        lng: -73.9855,
-        radius: 1500,
-        limit: 5
-      });
+  try {
+    console.log('   📡 Calling /api/generate-itinerary endpoint...');
+    
+    const response = await axios.post(`${API_URL}/api/generate-itinerary`, {
+      prompt: userMessage,
+      location: { lat: 40.7580, lng: -73.9855 } // Times Square default
+    });
 
-      console.log('   ✅ Response received');
-      setMessages(prev => prev.filter(m => !m.isThinking));
+    console.log('   ✅ Response received');
+    setMessages(prev => prev.filter(m => !m.isThinking));
 
-      if (mcpRes.data?.success) {
-        const data = mcpRes.data.data || {};
-        const venues = (data.venues || []).map((v, idx) => ({
-          id: v.id,
-          name: v.name,
-          category: v.category,
-          lat: v.lat,
-          lng: v.lng,
-          address: v.address,
-          rating: v.rating,
-          user_ratings_total: v.userRatingsTotal,
-          price_level: v.priceLevel,
-          order: idx + 1,
-          walkTime: idx === 0 ? 0 : 5
-        }));
-
-        const itinerary = {
-          title: 'Nearby Picks',
-          description: `Top ${venues.length} places near Times Square based on your request.`,
-          duration: '1-2 hours',
-          vibe: 'mixed',
-          numberOfStops: venues.length,
-          totalDistance: (venues.length * 0.5).toFixed(1),
-          venues
-        };
-
-        console.log(`   Venues received: ${itinerary.venues?.length}`);
-        setCurrentItinerary(itinerary);
-        
-        setMessages(prev => [...prev, { 
-          type: 'bot', 
-          content: `I've found some spots for you!`,
-          itinerary
-        }]);
-
-        toast.success('Results ready! 🎉');
+    if (response.data?.success && response.data?.itinerary) {
+      const { itinerary, qualityScore, issues, noEventsFound } = response.data;
+      
+      console.log(`   Title: ${itinerary.title}`);
+      console.log(`   Stops: ${itinerary.stops?.length}`);
+      console.log(`   Quality Score: ${qualityScore}`);
+      console.log(`   Issues: ${issues?.length || 0}`);
+      console.log(`   No Events Found: ${noEventsFound}`);
+      
+      // Transform new format to match MapView expectations
+      const transformedItinerary = transformItineraryFormat(itinerary);
+      setCurrentItinerary(transformedItinerary);
+      
+      // Create a detailed summary message
+      let summaryMessage = `Perfect! I've created "${itinerary.title}" for you.\n\n`;
+      summaryMessage += `📍 ${itinerary.stops?.length || 0} stops\n`;
+      summaryMessage += `🚶 ${itinerary.totalDistance}km total distance\n`;
+      summaryMessage += `⏱️ ${itinerary.duration}\n`;
+      
+      if (qualityScore) {
+        summaryMessage += `✨ Quality Score: ${Math.round(qualityScore * 100)}%\n`;
       }
-    } catch (error) {
-      console.error('   ❌ Error:', error.response?.data || error);
-      setMessages(prev => prev.filter(m => !m.isThinking));
       
-      let errorMessage = 'Sorry, I encountered an error creating your itinerary.';
-      
-      if (error.response?.data?.details) {
-        errorMessage += ` ${error.response.data.details}`;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      // Handle event information
+      const eventCount = itinerary.stops?.filter(s => s.isEvent).length || 0;
+      if (eventCount > 0) {
+        summaryMessage += `🎟️ ${eventCount} event(s) included\n`;
+      } else if (noEventsFound) {
+        summaryMessage += `ℹ️ No events found for your criteria\n`;
       }
       
       setMessages(prev => [...prev, { 
         type: 'bot', 
-        content: errorMessage,
-        isError: true
+        content: summaryMessage,
+        itinerary: transformedItinerary,
+        qualityScore,
+        issues,
+        noEventsFound
       }]);
-      
-      toast.error('Failed to generate itinerary');
-    }
 
-    setLoading(false);
-  };
-
-  const handleReplan = async (reason) => {
-    if (!currentItinerary) return;
-    
-    toast.loading(`Adjusting for ${reason}...`);
-    
-    try {
-      const response = await axios.post(`${API_URL}/api/mcp/replan`, {
-        reason,
-        currentItinerary,
-        location: { lat: 40.7580, lng: -73.9855 }
-      });
-
-      if (response.data.success) {
-        toast.dismiss();
-        toast.success(response.data.message);
-        
-        const updated = { ...currentItinerary };
-        if (response.data.updatedVenues?.length > 0) {
-          updated.venues[0] = { ...response.data.updatedVenues[0], order: 1 };
-        }
-        setCurrentItinerary(updated);
+      // Show quality toast with event info
+      if (qualityScore >= 0.8) {
+        toast.success('High-quality itinerary created! 🎉');
+      } else if (qualityScore >= 0.6) {
+        toast.success('Itinerary ready! Some optimization suggestions available.');
+      } else {
+        toast('Itinerary created with some limitations', { icon: '⚠️' });
       }
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Failed to replan');
+      
+      // Additional toast for no events
+      if (noEventsFound) {
+        setTimeout(() => {
+          toast('No events found for your criteria, showing venues only', { 
+            icon: 'ℹ️',
+            duration: 4000 
+          });
+        }, 1000);
+      }
+      
+    } else if (response.data?.error) {
+      throw new Error(response.data.error);
     }
+  } catch (error) {
+    console.error('   ❌ Error:', error.response?.data || error);
+    setMessages(prev => prev.filter(m => !m.isThinking));
+    
+    let errorMessage = 'Sorry, I encountered an error creating your itinerary.';
+    
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setMessages(prev => [...prev, { 
+      type: 'bot', 
+      content: errorMessage,
+      isError: true
+    }]);
+    
+    toast.error('Failed to generate itinerary');
+  }
+
+  setLoading(false);
+};
+
+  // Transform new MCP format to match existing MapView component
+  const transformItineraryFormat = (itinerary) => {
+    const transformed = {
+      ...itinerary,
+      venues: itinerary.stops || [], // MapView expects 'venues' array
+      numberOfStops: itinerary.stops?.length || 0,
+      hasEvents: itinerary.stops?.some(s => s.isEvent) || false
+    };
+    
+    // Ensure each stop has required fields for MapView
+    transformed.venues = transformed.venues.map((stop, index) => ({
+      ...stop,
+      lat: stop.location?.lat || stop.lat,
+      lng: stop.location?.lng || stop.lng,
+      order: stop.order || index + 1,
+      nearbyEvents: stop.nearbyEvents || []
+    }));
+    
+    return transformed;
   };
 
   const toggleVenueDescription = (venueIndex) => {
@@ -160,7 +189,29 @@ export default function Home() {
 
   const getPriceSymbol = (priceLevel) => {
     if (!priceLevel) return '$';
+    if (typeof priceLevel === 'string') return priceLevel;
     return '$'.repeat(priceLevel);
+  };
+
+  const formatEventDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+
+  const getDurationEmoji = (durationType) => {
+    switch(durationType) {
+      case 'few_hours': return '⚡';
+      case 'full_day': return '☀️';
+      case 'multi_day': return '🗓️';
+      default: return '📅';
+    }
   };
 
   return (
@@ -176,7 +227,7 @@ export default function Home() {
               PlanMate
             </h1>
             <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">
-              AI Travel Companion
+              Multi-Agent AI v2.0
             </span>
           </div>
           
@@ -209,70 +260,150 @@ export default function Home() {
                   className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {msg.isThinking ? (
-                    <div className="bg-white rounded-2xl px-6 py-3 max-w-md shadow-sm border border-gray-100">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-                        <span className="text-gray-500">Creating your perfect itinerary...</span>
+                    <div className="bg-white rounded-2xl px-6 py-4 max-w-md shadow-sm border border-gray-100">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                        <span className="text-gray-700 font-medium">AI Agents Working...</span>
                       </div>
+                      <p className="text-sm text-gray-500 ml-8">
+                        {msg.thinkingMessage || 'Creating your perfect itinerary...'}
+                      </p>
                     </div>
                   ) : (
                     <div className={`rounded-2xl px-6 py-3 max-w-md shadow-sm ${
                       msg.type === 'user' 
                         ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' 
-                        : 'bg-white border border-gray-100'
+                        : msg.isError 
+                          ? 'bg-red-50 border border-red-200'
+                          : 'bg-white border border-gray-100'
                     }`}>
-                      <p className={msg.type === 'user' ? 'text-white' : 'text-gray-800'}>
+                      <p className={msg.type === 'user' ? 'text-white' : msg.isError ? 'text-red-700' : 'text-gray-800'} style={{ whiteSpace: 'pre-line' }}>
                         {msg.content}
                       </p>
                       
+                      {/* Quality Score Badge */}
+                      {msg.qualityScore && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                            <CheckCircle className="w-3 h-3 text-green-600" />
+                            <span className="text-xs text-green-700">
+                              Quality: {Math.round(msg.qualityScore * 100)}%
+                            </span>
+                          </div>
+                          {msg.issues && msg.issues.length > 0 && (
+                            <button
+                              onClick={() => setShowQualityDetails(!showQualityDetails)}
+                              className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full hover:bg-yellow-200 transition"
+                            >
+                              <AlertCircle className="w-3 h-3 text-yellow-600" />
+                              <span className="text-xs text-yellow-700">
+                                {msg.issues.length} suggestions
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Quality Issues */}
+                      {showQualityDetails && msg.issues && msg.issues.length > 0 && (
+                        <div className="mt-3 p-3 bg-yellow-50 rounded-lg">
+                          <p className="text-xs font-semibold text-yellow-800 mb-2">Optimization Suggestions:</p>
+                          {msg.issues.map((issue, i) => (
+                            <div key={i} className="text-xs text-yellow-700 mb-1">
+                              • {issue.suggestion}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {msg.itinerary && msg.noEventsFound && (
+  <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+    <div className="flex items-start gap-2">
+      <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+      <div className="flex-1">
+        <p className="text-sm text-blue-800 font-medium">No events found</p>
+        <p className="text-xs text-blue-700 mt-1">
+          We couldn't find any events matching your criteria for the requested time period. 
+          Your itinerary includes venue recommendations only.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
                       {msg.itinerary && (
                         <div className="mt-4 space-y-3">
-                          {/* Weather Widget */}
-                          {msg.itinerary.weather && (
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <span className="text-2xl">{msg.itinerary.weather.icon}</span>
-                              <span>{msg.itinerary.weather.temp}°F - {msg.itinerary.weather.condition}</span>
+                          {/* Duration Type Badge */}
+                          {msg.itinerary.durationType && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-gray-600">Trip Type:</span>
+                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                {getDurationEmoji(msg.itinerary.durationType)} {msg.itinerary.duration}
+                              </span>
                             </div>
                           )}
                           
-                          {/* Venues List with Descriptions */}
+                          {/* Stops List */}
                           <div className="space-y-2">
-                            {msg.itinerary.venues?.map((venue, vIdx) => (
+                            {msg.itinerary.venues?.map((stop, vIdx) => (
                               <motion.div
                                 key={vIdx}
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: vIdx * 0.1 }}
-                                className="bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors"
+                                className={`rounded-lg p-3 hover:bg-gray-100 transition-colors ${
+                                  stop.isEvent ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50'
+                                }`}
                               >
                                 <div className="flex items-start gap-3">
-                                  <div className="w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
-                                    {venue.order}
+                                  <div className={`w-8 h-8 ${stop.isEvent ? 'bg-purple-600' : 'bg-gradient-to-r from-purple-600 to-blue-600'} text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0`}>
+                                    {stop.order}
                                   </div>
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between">
                                       <div className="flex-1">
-                                        <h4 className="font-semibold text-gray-900">{venue.name}</h4>
-                                        <p className="text-xs text-gray-500">
-                                          {venue.category} • {getPriceSymbol(venue.price_level || venue.price)}
-                                        </p>
+                                        <h4 className="font-semibold text-gray-900">{stop.name}</h4>
+                                        {stop.isEvent ? (
+                                          <div>
+                                            <p className="text-xs text-purple-600">
+                                              🎟️ {stop.eventType} • {stop.venueName}
+                                            </p>
+                                            {stop.startDate && (
+                                              <p className="text-xs text-purple-700 mt-1">
+                                                📅 {formatEventDate(stop.startDate)}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p className="text-xs text-gray-500">
+                                            {stop.category} • {getPriceSymbol(stop.priceLevel || stop.price)}
+                                          </p>
+                                        )}
                                       </div>
-                                      {venue.rating && (
-                                        <div className="text-sm font-semibold text-amber-500 flex items-center gap-1">
-                                          ⭐ {venue.rating}
+                                      {stop.isEvent ? (
+                                        <div className="text-xs">
+                                          {!stop.isAvailable ? (
+                                            <span className="text-red-600 font-semibold">SOLD OUT</span>
+                                          ) : (
+                                            <span className="text-green-600">{stop.price || 'Check site'}</span>
+                                          )}
                                         </div>
+                                      ) : (
+                                        stop.rating && (
+                                          <div className="text-sm font-semibold text-amber-500 flex items-center gap-1">
+                                            ⭐ {stop.rating}
+                                          </div>
+                                        )
                                       )}
                                     </div>
                                     
                                     {/* Description Section */}
-                                    {venue.description && (
+                                    {stop.description && (
                                       <div className="mt-2">
                                         <div 
                                           className={`text-xs text-gray-600 ${expandedVenue === vIdx ? '' : 'line-clamp-2'}`}
                                         >
-                                          {venue.description}
+                                          {stop.description}
                                         </div>
-                                        {venue.description.length > 100 && (
+                                        {stop.description.length > 100 && (
                                           <button
                                             onClick={() => toggleVenueDescription(vIdx)}
                                             className="text-xs text-purple-600 hover:text-purple-700 mt-1 flex items-center gap-1"
@@ -284,24 +415,24 @@ export default function Home() {
                                       </div>
                                     )}
                                     
-                                    {/* Tips if available */}
-                                    {venue.tips && (
-                                      <p className="text-xs text-purple-600 mt-2">💡 {venue.tips}</p>
-                                    )}
-                                    
                                     {/* Walk time */}
-                                    {venue.walkTime > 0 && (
+                                    {stop.walkTime > 0 && (
                                       <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                                         <Clock className="w-3 h-3" />
-                                        {venue.walkTime} min walk from previous stop
+                                        {stop.walkTime} min walk from previous stop
                                       </p>
                                     )}
                                     
-                                    {/* Address */}
-                                    {venue.address && (
-                                      <p className="text-xs text-gray-400 mt-1">
-                                        📍 {venue.address.split(',').slice(0, 2).join(',')}
-                                      </p>
+                                    {/* Event URL */}
+                                    {stop.url && (
+                                      <a 
+                                        href={stop.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-purple-600 hover:text-purple-700 mt-2 inline-block"
+                                      >
+                                        🎫 Get Tickets →
+                                      </a>
                                     )}
                                   </div>
                                 </div>
@@ -322,23 +453,11 @@ export default function Home() {
                                 ⏱️ {msg.itinerary.duration}
                               </span>
                             </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-2 mt-3">
-                            <button
-                              onClick={() => handleReplan('rain')}
-                              className="flex-1 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition flex items-center justify-center gap-1"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              It's raining!
-                            </button>
-                            <button
-                              onClick={() => handleReplan('crowded')}
-                              className="flex-1 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg text-sm hover:bg-orange-200 transition"
-                            >
-                              Too crowded
-                            </button>
+                            {msg.itinerary.averageDistanceBetweenStops && (
+                              <p className="text-xs text-purple-600 mt-2">
+                                Average distance between stops: {msg.itinerary.averageDistanceBetweenStops.toFixed(1)}km
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -388,6 +507,9 @@ export default function Home() {
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </button>
             </div>
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              Powered by 6 specialized AI agents working together
+            </p>
           </div>
         </div>
 
@@ -401,6 +523,17 @@ export default function Home() {
                 <MapPin className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">Your map will appear here</p>
                 <p className="text-sm text-gray-400 mt-2">Start by telling me what you'd like to do!</p>
+                <div className="mt-4 p-4 bg-white rounded-lg max-w-sm mx-auto">
+                  <p className="text-xs text-gray-600">
+                    <strong>AI Agents Ready:</strong><br/>
+                    • Intent Analyzer<br/>
+                    • Master Planner<br/>
+                    • Venue Specialist<br/>
+                    • Event Specialist<br/>
+                    • Route Optimizer<br/>
+                    • Quality Controller
+                  </p>
+                </div>
               </div>
             </div>
           )}

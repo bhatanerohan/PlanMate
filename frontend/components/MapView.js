@@ -9,6 +9,16 @@ import { Clock, Star, DollarSign, Users, ExternalLink, Navigation, AlertCircle, 
 // You'll need to get a Mapbox token from https://mapbox.com
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+
+const getLocationFromStop = (stop) => {
+  // Handle both old format (lat, lng) and new format (location: {lat, lng})
+  if (stop.location) {
+    return { lat: stop.location.lat, lng: stop.location.lng };
+  }
+  return { lat: stop.lat, lng: stop.lng };
+};
+
+
 export default function MapView({ itinerary }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -57,6 +67,7 @@ export default function MapView({ itinerary }) {
 
     // Add ALL main venues as markers
     itinerary.venues.forEach((venue, index) => {
+      const loc = getLocationFromStop(venue); 
       console.log(`Adding marker ${index + 1}:`, venue.name, 'at', venue.lat, venue.lng);
       
       // Create custom marker element for main venues
@@ -99,7 +110,7 @@ export default function MapView({ itinerary }) {
         anchor: 'center',
         offset: [0, 0] 
       })
-        .setLngLat([venue.lng, venue.lat])
+        .setLngLat([loc.lng, loc.lat])
         .addTo(map.current);
 
       // Add popup on hover
