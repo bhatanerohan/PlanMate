@@ -9,6 +9,16 @@ import { Clock, Star, DollarSign, Users, ExternalLink, Navigation, AlertCircle, 
 // You'll need to get a Mapbox token from https://mapbox.com
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+
+const getLocationFromStop = (stop) => {
+  // Handle both old format (lat, lng) and new format (location: {lat, lng})
+  if (stop.location) {
+    return { lat: stop.location.lat, lng: stop.location.lng };
+  }
+  return { lat: stop.lat, lng: stop.lng };
+};
+
+
 export default function MapView({ itinerary }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -57,6 +67,7 @@ export default function MapView({ itinerary }) {
 
     // Add ALL main venues as markers
     itinerary.venues.forEach((venue, index) => {
+      const loc = getLocationFromStop(venue); 
       console.log(`Adding marker ${index + 1}:`, venue.name, 'at', venue.lat, venue.lng);
       
       // Create custom marker element for main venues
@@ -99,7 +110,7 @@ export default function MapView({ itinerary }) {
         anchor: 'center',
         offset: [0, 0] 
       })
-        .setLngLat([venue.lng, venue.lat])
+        .setLngLat([loc.lng, loc.lat])
         .addTo(map.current);
 
       // Add popup on hover
@@ -128,15 +139,14 @@ export default function MapView({ itinerary }) {
 
       // Add click handler
       el.addEventListener('click', () => {
-        setSelectedVenue(venue);
-        setSelectedEvent(null);
-        map.current.flyTo({
-          center: [venue.lng, venue.lat],
-          zoom: 16,
-          pitch: 60,
-          duration: 1000
-        });
-      });
+  setSelectedVenue(venue);
+  setSelectedEvent(null);
+  map.current.flyTo({
+    center: [venue.lng, venue.lat],
+    zoom: 16,
+    duration: 1000
+  });
+});
 
       markers.current.push(marker);
 
@@ -551,110 +561,126 @@ export default function MapView({ itinerary }) {
       </div>
 
       {/* Selected Event Card */}
-      {selectedEvent && (
-        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
-          <button
-            onClick={() => setSelectedEvent(null)}
-            className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded-full"
-          >
-            ✕
-          </button>
-          
-          {selectedEvent.imageUrl && (
-            <img 
-              src={selectedEvent.imageUrl} 
-              alt={selectedEvent.name}
-              className="w-full h-32 object-cover rounded-lg mb-3"
-            />
-          )}
-          
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <h3 className="font-bold text-lg text-gray-900">{selectedEvent.name}</h3>
-              <p className="text-sm text-gray-600">{selectedEvent.eventType}</p>
-            </div>
-            <div className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-sm font-bold">
-              Event
-            </div>
-          </div>
+{selectedEvent && (
+  <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
+    <button
+      onClick={() => setSelectedEvent(null)}
+      className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded-full"
+    >
+      ✕
+    </button>
+    
+    {selectedEvent.imageUrl && (
+      <img 
+        src={selectedEvent.imageUrl} 
+        alt={selectedEvent.name}
+        className="w-full h-32 object-cover rounded-lg mb-3"
+      />
+    )}
+    
+    <div className="flex items-start justify-between mb-2">
+      <div>
+        <h3 className="font-bold text-lg text-gray-900">{selectedEvent.name}</h3>
+        <p className="text-sm text-gray-600">{selectedEvent.eventType}</p>
+      </div>
+      <div className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-sm font-bold">
+        Event
+      </div>
+    </div>
 
-          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-            {selectedEvent.startDate && (
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                <span>{new Date(selectedEvent.startDate).toLocaleDateString()}</span>
-              </div>
-            )}
-            {selectedEvent.price && (
-              <div className="flex items-center gap-1">
-                <DollarSign className="w-4 h-4" />
-                <span>{selectedEvent.price}</span>
-              </div>
-            )}
-            {selectedEvent.venueName && (
-              <div className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span>{selectedEvent.venueName}</span>
-              </div>
-            )}
-          </div>
-
-          {selectedEvent.soldOut ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
-              <p className="text-sm text-red-700">🚫 This event is sold out</p>
-            </div>
-          ) : (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3">
-              <p className="text-sm text-green-700">🎫 Tickets available!</p>
-            </div>
-          )}
-
-          {selectedEvent.description && (
-            <p className="text-xs text-gray-500 mb-3">{selectedEvent.description}</p>
-          )}
-
-          <div className="flex gap-2">
-            {selectedEvent.eventUrl && (
-              <button 
-                onClick={() => window.open(selectedEvent.eventUrl, '_blank')}
-                className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
-              >
-                <Ticket className="w-4 h-4" />
-                Get Tickets
-              </button>
-            )}
-            <button 
-              className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition flex items-center justify-center gap-2"
-              onClick={() => {
-                // Add to itinerary logic here
-                alert('Feature coming soon: Add to itinerary');
-              }}
-            >
-              <ExternalLink className="w-4 h-4" />
-              Add to Plan
-            </button>
-          </div>
+    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+      {selectedEvent.startDate && (
+        <div className="flex items-center gap-1">
+          <Calendar className="w-4 h-4" />
+          <span>{new Date(selectedEvent.startDate).toLocaleDateString()}</span>
         </div>
       )}
+      {selectedEvent.price && (
+        <div className="flex items-center gap-1">
+          <DollarSign className="w-4 h-4" />
+          <span>{selectedEvent.price}</span>
+        </div>
+      )}
+      {selectedEvent.venueName && (
+        <div className="flex items-center gap-1">
+          <MapPin className="w-4 h-4" />
+          <span>{selectedEvent.venueName}</span>
+        </div>
+      )}
+    </div>
 
-      {/* Venue Details Card */}
-      {selectedVenue && !selectedEvent && (
-        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
-          <button
-            onClick={() => setSelectedVenue(null)}
-            className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded-full"
+    {selectedEvent.soldOut ? (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+        <p className="text-sm text-red-700">🚫 This event is sold out</p>
+      </div>
+    ) : (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-3">
+        <p className="text-sm text-green-700">🎫 Tickets available!</p>
+      </div>
+    )}
+
+    {selectedEvent.description && (
+      <p className="text-xs text-gray-500 mb-3">{selectedEvent.description}</p>
+    )}
+
+    {/* UPDATED BUTTONS SECTION */}
+    <div className="flex gap-2">
+      {selectedEvent.eventUrl || selectedEvent.url ? (
+        <>
+          <button 
+            onClick={() => window.open(selectedEvent.eventUrl || selectedEvent.url, '_blank')}
+            className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
           >
-            ✕
+            <Ticket className="w-4 h-4" />
+            Get Tickets
           </button>
-          
-          {selectedVenue.photo && (
-            <img 
-              src={selectedVenue.photo} 
-              alt={selectedVenue.name}
-              className="w-full h-32 object-cover rounded-lg mb-3"
-            />
-          )}
-          
+          <button 
+            onClick={() => window.open(selectedEvent.eventUrl || selectedEvent.url, '_blank')}
+            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Visit Site
+          </button>
+        </>
+      ) : (
+        <button 
+          className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition flex items-center justify-center gap-2"
+          onClick={() => alert('No ticket URL available')}
+        >
+          <Info className="w-4 h-4" />
+          No Link Available
+        </button>
+      )}
+    </div>
+  </div>
+)}
+      {/* Venue Details Card */}
+{selectedVenue && !selectedEvent && (
+  <div className="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-2xl p-4 max-w-md mx-auto animate-slide-up">
+    <button
+      onClick={() => setSelectedVenue(null)}
+      className="absolute top-2 right-2 p-1 hover:bg-gray-100 rounded-full"
+    >
+      ✕
+    </button>
+    
+    {/* VENUE PHOTO - This should now work! */}
+    {selectedVenue.photo ? (
+      <img 
+        src={selectedVenue.photo} 
+        alt={selectedVenue.name}
+        className="w-full h-32 object-cover rounded-lg mb-3"
+        onError={(e) => {
+          // Fallback if image fails to load
+          e.target.style.display = 'none';
+        }}
+      />
+    ) : (
+      // Placeholder when no photo available
+      <div className="w-full h-32 bg-gradient-to-br from-purple-100 to-blue-100 rounded-lg mb-3 flex items-center justify-center">
+        <MapPin className="w-12 h-12 text-purple-400" />
+      </div>
+    )}          
           <div className="flex items-start justify-between mb-2">
             <div>
               <h3 className="font-bold text-lg text-gray-900">{selectedVenue.name}</h3>
@@ -686,21 +712,30 @@ export default function MapView({ itinerary }) {
             )}
           </div>
 
-          {selectedVenue.nearbyEvents && selectedVenue.nearbyEvents.length > 0 && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-3">
-              <p className="text-sm text-purple-700 font-semibold mb-1">
-                🎟️ {selectedVenue.nearbyEvents.length} events happening nearby (5 days):
-              </p>
-              <div className="space-y-1">
-                {selectedVenue.nearbyEvents.slice(0, 3).map((event, idx) => (
-                  <div key={idx} className="text-xs text-purple-600">
-                    • {event.name} - {event.price}
-                  </div>
-                ))}
-              </div>
-            </div>
+{selectedVenue.nearbyEvents && selectedVenue.nearbyEvents.length > 0 && (
+  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-3">
+    <p className="text-sm text-purple-700 font-semibold mb-1">
+      🎟️ {selectedVenue.nearbyEvents.length} events happening nearby (5 days):
+    </p>
+    <div className="space-y-1">
+      {selectedVenue.nearbyEvents.slice(0, 3).map((event, idx) => (
+        <div key={idx} className="flex items-center justify-between text-xs">
+          <span className="text-purple-600">
+            • {event.name} - {event.price}
+          </span>
+          {event.url && (
+            <button
+              onClick={() => window.open(event.url, '_blank')}
+              className="text-purple-700 hover:text-purple-900 underline ml-2"
+            >
+              View
+            </button>
           )}
-
+        </div>
+      ))}
+    </div>
+  </div>
+)}
           {selectedVenue.tips && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3">
               <p className="text-sm text-blue-700">💡 {selectedVenue.tips}</p>
@@ -729,28 +764,6 @@ export default function MapView({ itinerary }) {
         </div>
       )}
 
-      {/* Legend */}
-      <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-md p-3">
-        <h4 className="text-xs font-bold text-gray-700 mb-2">Map Legend</h4>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-purple-600 rounded-full"></div>
-            <span className="text-xs text-gray-600">Your stops</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs">🎵</div>
-            <span className="text-xs text-gray-600">Music events</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-xs">⚽</div>
-            <span className="text-xs text-gray-600">Sports</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center text-xs">😄</div>
-            <span className="text-xs text-gray-600">Comedy</span>
-          </div>
-        </div>
-      </div>
 
       <style jsx>{`
         @keyframes slide-up {
