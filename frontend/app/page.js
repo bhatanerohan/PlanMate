@@ -478,7 +478,7 @@ export default function Home() {
                   <button
                     key={idx}
                     onClick={() => setInput(prompt)}
-                    className="text-left p-3 bg-white rounded-lg border border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition text-sm"
+                    className="text-left p-3 bg-white rounded-lg border border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition text-sm text-gray-900"
                   >
                     {prompt}
                   </button>

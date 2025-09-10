@@ -26,17 +26,7 @@ export class MasterPlannerAgent extends BaseAgent {
 
   private buildSystemPrompt(durationType: string): string {
     const basePrompt = `You are a master travel planner creating itineraries for New York City.
-    Create a detailed plan based on the user's intent analysis.
-    
-    Key NYC Locations:
-    - Times Square: 40.7580, -73.9855
-    - Central Park: 40.7644, -73.9732
-    - Wall Street: 40.7074, -74.0113
-    - Brooklyn Bridge: 40.7061, -73.9969
-    - Chelsea: 40.7465, -74.0014
-    - SoHo: 40.7223, -74.0020
-    - Upper East Side: 40.7736, -73.9566
-    - Williamsburg: 40.7081, -73.9571`;
+    Create a detailed plan based on the user's intent analysis.`;
 
     const durationSpecific = {
       few_hours: `

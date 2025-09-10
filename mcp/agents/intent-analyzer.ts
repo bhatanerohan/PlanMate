@@ -317,13 +317,7 @@ export class IntentAnalyzerAgent extends BaseAgent {
        - Look for: "concert", "show", "broadway", "game", "performance", "festival", "music", "live music"
        - Also check for: "what's happening", "events", "tonight", "this weekend"
     
-    NYC LOCATION CONTEXT:
-    - Wall Street = Financial District (40.7074, -74.0113)
-    - Bryant Park = Midtown (40.7536, -73.9832)
-    - Times Square = Theater District (40.7580, -73.9855)
-    - Central Park = Upper Manhattan (40.7829, -73.9654)
-    - Brooklyn Bridge = Downtown/Brooklyn (40.7061, -73.9969)
-    - Madison Square Garden = Midtown West (40.7505, -73.9934)
+
     
     For the prompt: "${prompt}"
     

@@ -191,25 +191,29 @@ export class GoogleMapsClient {
     }
   }
 
-  private formatPlaces(places: any[], category: string, limit: number): Venue[] {
-    return places.slice(0, limit).map((place: any) => ({
-      id: place.place_id,
-      name: place.name,
-      category: category || place.types?.[0] || 'venue',
-      location: {
-        lat: place.geometry?.location?.lat,
-        lng: place.geometry?.location?.lng
-      },
-      address: place.formatted_address || place.vicinity || 'Address not available',
-      rating: place.rating,
-      priceLevel: place.price_level,
-      userRatingsTotal: place.user_ratings_total,
-      businessStatus: place.business_status,
-      openNow: place.opening_hours?.open_now,
-      photos: place.photos?.map((p: any) => p.photo_reference)
-    }));
-  }
-
+private formatPlaces(places: any[], category: string, limit: number): Venue[] {
+  return places.slice(0, limit).map((place: any) => ({
+    id: place.place_id,
+    name: place.name,
+    category: category || place.types?.[0] || 'venue',
+    location: {
+      lat: place.geometry?.location?.lat,
+      lng: place.geometry?.location?.lng
+    },
+    address: place.formatted_address || place.vicinity || 'Address not available',
+    rating: place.rating,
+    priceLevel: place.price_level,
+    userRatingsTotal: place.user_ratings_total,
+    businessStatus: place.business_status,
+    openNow: place.opening_hours?.open_now,
+    // BUILD ACTUAL PHOTO URL HERE
+    photo: place.photos?.[0]?.photo_reference 
+      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${this.apiKey}`
+      : null,
+    // Keep photo references for additional photos if needed
+    photoReferences: place.photos?.map((p: any) => p.photo_reference)
+  }));
+}
   private getAreaName(location: { lat: number, lng: number }): string {
     // Map coordinates to area names for better search
     if (Math.abs(location.lat - 40.7074) < 0.01 && Math.abs(location.lng - (-74.0113)) < 0.01) {
@@ -243,115 +247,6 @@ export class GoogleMapsClient {
   }
 }
 
-// export class TicketmasterClient {
-//   private apiKey: string;
-//   private baseUrl = 'https://app.ticketmaster.com/discovery/v2';
-
-//   constructor(apiKey: string) {
-//     this.apiKey = apiKey;
-//   }
-
-//  async searchEvents(params: EventSearchParams): Promise<Event[]> {
-//   const { location, radiusKm = 5, keywords = [], timeWindow, limit = 10 } = params;
-
-//   try {
-//     const url = `${this.baseUrl}/events.json`;
-    
-//     const searchParams: any = {
-//       apikey: this.apiKey,
-//       latlong: `${location.lat},${location.lng}`,
-//       radius: Math.min(Math.round(radiusKm), 100),
-//       unit: 'km',
-//       size: limit,
-//       sort: 'date,asc',
-//       includeSpellcheck: 'yes'
-//     };
-
-//     // Add keywords if provided
-//     if (keywords.length > 0) {
-//       searchParams.keyword = keywords.join(' ');
-//     }
-
-//     // Add time window if provided, otherwise default to next 7 days
-//     if (timeWindow) {
-//       searchParams.startDateTime = this.formatDateTime(timeWindow.start);
-//       searchParams.endDateTime = this.formatDateTime(timeWindow.end);
-//     } else {
-//       // Default to next 7 days
-//       const now = new Date();
-//       const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-//       searchParams.startDateTime = this.formatDateTime(now);
-//       searchParams.endDateTime = this.formatDateTime(nextWeek);
-//     }
-
-//     console.log(`[TicketmasterClient] Time window: ${searchParams.startDateTime} to ${searchParams.endDateTime}`);
-//       console.log('[TicketmasterClient] Searching events:', searchParams);
-
-//       const response = await axios.get(url, { params: searchParams });
-      
-//       if (!response.data._embedded?.events) {
-//         console.log('[TicketmasterClient] No events found');
-//         return [];
-//       }
-
-//       const events = response.data._embedded.events;
-//       console.log(`[TicketmasterClient] Found ${events.length} events`);
-
-//       return events.map((event: any) => {
-//         const venue = event._embedded?.venues?.[0] || {};
-//         const priceRanges = event.priceRanges?.[0];
-        
-//         let price = 'Check website';
-//         if (priceRanges) {
-//           const min = priceRanges.min;
-//           const max = priceRanges.max;
-//           const currency = priceRanges.currency || 'USD';
-//           if (min && max && min !== max) {
-//             price = `$${min}-$${max}`;
-//           } else if (min) {
-//             price = `$${min}`;
-//           }
-//         }
-
-//         // Get event classification
-//         const classification = event.classifications?.[0];
-//         const eventType = [
-//           classification?.segment?.name,
-//           classification?.genre?.name,
-//           classification?.subGenre?.name
-//         ].filter(Boolean).join(' - ') || 'Event';
-
-//         return {
-//           id: event.id,
-//           name: event.name,
-//           eventType,
-//           location: {
-//             lat: parseFloat(venue.location?.latitude || location.lat),
-//             lng: parseFloat(venue.location?.longitude || location.lng)
-//           },
-//           venueName: venue.name || 'Venue TBA',
-//           startDate: event.dates?.start?.dateTime || event.dates?.start?.localDate,
-//           endDate: event.dates?.end?.dateTime,
-//           price,
-//           url: event.url,
-//           imageUrl: event.images?.[0]?.url,
-//           isAvailable: event.dates?.status?.code !== 'offsale' && event.dates?.status?.code !== 'cancelled',
-//           description: event.info || event.pleaseNote || `${eventType} at ${venue.name}`,
-//           isEvent: true
-//         };
-//       });
-      
-//     } catch (error: any) {
-//       console.error('[TicketmasterClient] Search error:', error.response?.data || error.message);
-//       return [];
-//     }
-//   }
-
-//   private formatDateTime(date: Date): string {
-//     // Format as ISO 8601 without milliseconds: YYYY-MM-DDTHH:mm:ssZ
-//     return date.toISOString().split('.')[0] + 'Z';
-//   }
-// }
 
 export class TicketmasterClient {
   private apiKey: string;
