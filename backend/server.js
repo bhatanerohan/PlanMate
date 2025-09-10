@@ -10,7 +10,15 @@ dotenv.config();
 const cequence = new CequenceGateway();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://planmate-rho.vercel.app',  // Add your Vercel URL
+    'https://planmate*.vercel.app',      // Allow all your deployments
+    /\.vercel\.app$/                      // Allow any Vercel domain
+  ],
+  credentials: true
+}));
 app.use(express.json());
 app.use(cequence.middleware());
 
