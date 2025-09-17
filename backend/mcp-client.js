@@ -111,13 +111,13 @@ class McpClient {
       
       this.child.stdin.write(msg + '\n');
       
-      // Timeout after 30 seconds
+      // Timeout after 60 seconds
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
           reject(new Error('MCP request timeout'));
         }
-      }, 30000);
+      }, 60000);
     });
   }
 

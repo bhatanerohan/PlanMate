@@ -5,6 +5,7 @@ import { GoogleMapsClient } from '../lib/api-clients.js';
 
 export class VenueSpecialistAgent extends BaseAgent {
   private googleClient: GoogleMapsClient;
+  private usedVenueIds: Set<string> = new Set(); // Track used venues
 
   constructor(openaiApiKey: string, googleApiKey: string) {
     super('VenueSpecialist', openaiApiKey);
@@ -14,14 +15,66 @@ export class VenueSpecialistAgent extends BaseAgent {
   async process(message: AgentMessage): Promise<Venue[]> {
     const searchParams = message.payload as VenueSearchParams;
     
+    // For "local" searches, use smaller radius
+    const isLocalSearch = this.context?.currentPlan?.searchStrategy?.type === 'minimal' ||
+                         this.context?.constraints?.original_prompt?.toLowerCase().includes('local') ||
+                         this.context?.constraints?.original_prompt?.toLowerCase().includes('nearby');
+    
+    if (isLocalSearch && !searchParams.radius) {
+      searchParams.radius = 1000; // 1km for local searches instead of default 5km
+    }
+    
     this.log('Searching venues:', searchParams);
 
     // Search Google Places
-    const venues = await this.googleClient.searchVenues(searchParams);
+    let venues = await this.googleClient.searchVenues(searchParams);
     
     if (venues.length === 0) {
       this.log('No venues found from Google Places');
       return [];
+    }
+    
+    // FILTER OUT ALREADY USED VENUES
+    const previouslySelectedVenues = this.context?.selectedVenues || [];
+    const previousIds = new Set(previouslySelectedVenues.map(v => v.id));
+    
+    // Filter out duplicates
+    venues = venues.filter(v => {
+      // Check if venue was already selected
+      if (previousIds.has(v.id) || this.usedVenueIds.has(v.id)) {
+        this.log(`Filtering out duplicate venue: ${v.name}`);
+        return false;
+      }
+      
+      // Check if venue name is too similar to already selected venues
+      const similarName = previouslySelectedVenues.some(selected => 
+        selected.name.toLowerCase() === v.name.toLowerCase() ||
+        selected.name.includes(v.name) || 
+        v.name.includes(selected.name)
+      );
+      
+      if (similarName) {
+        this.log(`Filtering out venue with similar name: ${v.name}`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // If all venues were filtered out, try expanding search radius
+    if (venues.length === 0 && searchParams.radius) {
+      this.log('All venues were duplicates, expanding search radius');
+      const expandedParams = {
+        ...searchParams,
+        radius: searchParams.radius * 2
+      };
+      venues = await this.googleClient.searchVenues(expandedParams);
+      
+      // Filter duplicates again
+      venues = venues.filter(v => 
+        !previousIds.has(v.id) && 
+        !this.usedVenueIds.has(v.id)
+      );
     }
     
     // Score and rank venues
@@ -30,7 +83,20 @@ export class VenueSpecialistAgent extends BaseAgent {
     // Get descriptions for top venues
     const enrichedVenues = await this.enrichVenues(scoredVenues.slice(0, 5));
     
-    this.log(`Found ${enrichedVenues.length} venues`);
+    // Mark the first venue as used (the one that will be selected)
+    if (enrichedVenues.length > 0) {
+      this.usedVenueIds.add(enrichedVenues[0].id);
+      
+      // Also track in context if available
+      if (this.context) {
+        if (!this.context.selectedVenues) {
+          this.context.selectedVenues = [];
+        }
+        this.context.selectedVenues.push(enrichedVenues[0]);
+      }
+    }
+    
+    this.log(`Found ${enrichedVenues.length} unique venues`);
     
     return enrichedVenues;
   }
@@ -48,7 +114,9 @@ export class VenueSpecialistAgent extends BaseAgent {
       
       Current context:
       - Trip vibe: ${this.context.currentPlan?.vibe || 'general'}
-      - Already selected: ${this.context.selectedVenues.map(v => v.name).join(', ') || 'none'}
+      - Already selected: ${this.context.selectedVenues?.map(v => v.name).join(', ') || 'none'}
+      
+      IMPORTANT: Prioritize variety - if venues with similar names exist, score them lower.
       
       Return a JSON array with venue scores:
       [{"venue_id": "id", "score": 0.85, "reason": "why"}]
@@ -87,7 +155,7 @@ export class VenueSpecialistAgent extends BaseAgent {
       
       // If we still don't have valid scores, create default ones
       if (!Array.isArray(scores) || scores.length === 0) {
-        this.log('Invalid or empty scores from GPT, using default scoring');
+        this.log('Invalid or empty scores from GPT, using distance-based scoring');
         scores = venues.map(v => ({
           venue_id: v.id,
           score: (v.rating || 3) / 5 * 0.7 + 0.3, // Simple default scoring

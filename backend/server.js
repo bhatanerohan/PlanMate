@@ -5,12 +5,22 @@ import dotenv from 'dotenv';
 import McpClient from './mcp-client.js';
 import CequenceGateway from './cequence-gateway.js';
 import { setupMCPHttpTransport } from './mcp-http-transport.js';
+import { RouteFetcher } from './route-fetcher.js'; // ADD THIS
 
 dotenv.config();
 const cequence = new CequenceGateway();
+const routeFetcher = new RouteFetcher();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://planmate-rho.vercel.app',  // Add your Vercel URL
+    'https://planmate*.vercel.app',      // Allow all your deployments
+    /\.vercel\.app$/                      // Allow any Vercel domain
+  ],
+  credentials: true
+}));
 app.use(express.json());
 app.use(cequence.middleware());
 
@@ -125,6 +135,48 @@ app.get('/api/gateway/health', (req, res) => {
       'request_logging'
     ]
   });
+});
+
+// This should already be in your server.js
+app.get('/api/routes', async (req, res) => {
+  console.log('\n[API] Fetch Routes Request');
+  
+  try {
+    const { lat, lng, type = 'all', radius = 5000, limit = 5 } = req.query;
+    
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        error: 'Latitude and longitude are required'
+      });
+    }
+    
+    console.log(`[API] Fetching ${type} routes around ${lat},${lng} within ${radius}m`);
+    
+    const routes = await routeFetcher.fetchRoutes(
+      parseFloat(lat),
+      parseFloat(lng),
+      type,
+      parseInt(radius),
+      parseInt(limit)
+    );
+    
+    console.log(`[API] Found ${routes.length} routes`);
+    
+    res.json({
+      success: true,
+      routes,
+      count: routes.length,
+      center: { lat: parseFloat(lat), lng: parseFloat(lng) }
+    });
+    
+  } catch (error) {
+    console.error('[API] Error fetching routes:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 app.get('/', (req, res) => {

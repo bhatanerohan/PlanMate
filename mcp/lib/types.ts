@@ -1,3 +1,4 @@
+// mcp/lib/types.ts - UPDATED WITH LOCAL SEARCH SUPPORT
 export interface Location {
   lat: number;
   lng: number;
@@ -14,6 +15,7 @@ export interface VenueSearchParams {
   category?: string;
   radius?: number;
   limit?: number;
+  isLocalSearch?: boolean; // Added for local search support
 }
 
 export interface EventSearchParams {
@@ -22,6 +24,7 @@ export interface EventSearchParams {
   keywords?: string[];
   timeWindow?: TimeWindow;
   limit?: number;
+  isLocalSearch?: boolean; // Added for local search support
 }
 
 export interface Venue {
@@ -37,6 +40,9 @@ export interface Venue {
   nearbyEvents?: Event[];
   order?: number;
   walkTime?: number;
+  distance?: number; // Distance from search center
+  photo?: string; // Photo URL
+  photoReferences?: string[]; // Additional photo references
 }
 
 export interface Event {
@@ -52,6 +58,9 @@ export interface Event {
   imageUrl?: string;
   isAvailable: boolean;
   description?: string;
+  isEvent?: boolean; // Marker for events
+  lat?: number; // For MapView compatibility
+  lng?: number; // For MapView compatibility
 }
 
 export interface ItineraryPlan {
@@ -63,6 +72,29 @@ export interface ItineraryPlan {
   numberOfStops: number;
   days?: DayPlan[];
   searchStrategy: SearchStrategy;
+  isLocalSearch?: boolean; // Added for local search tracking
+  searchPoints?: SearchPoint[]; // Added for search points
+  totalDistance?: number; // Total walking distance
+  totalWalkTime?: number; // Total walking time
+  searchRadius?: number; // Search radius used
+  maxDistanceFromCenter?: number; // Maximum distance from center point
+  distanceWarning?: string; // Warning if distance exceeds limits
+  localSearchAdjusted?: boolean; // Flag if adjusted for local search
+  removedStopsCount?: number; // Number of stops removed for being too far
+}
+
+export interface SearchPoint {
+  stopNumber: number;
+  type: 'venue' | 'event';
+  query: string;
+  category?: string;
+  location: Location;
+  purpose: string;
+  estimatedDuration: number;
+  isExplicitRequest: boolean;
+  dayNumber?: number; // For multi-day trips
+  searchRadius?: number; // Individual search radius
+  event_keywords?: string[]; // Event-specific keywords
 }
 
 export interface DayPlan {
@@ -91,7 +123,6 @@ export interface AgentMessage {
 }
 
 export interface AgentContext {
-  // failedSearches: any;
   sessionId: string;
   userPrompt: string;
   location: Location;
@@ -100,4 +131,29 @@ export interface AgentContext {
   currentPlan?: ItineraryPlan;
   selectedVenues: Venue[];
   selectedEvents: Event[];
+}
+
+// Additional types for local search support
+export interface LocalSearchConstraints {
+  maxRadiusKm: number; // Maximum radius from center (default 3km)
+  maxWalkBetweenStopsKm: number; // Maximum walk between consecutive stops (default 1.5km)
+  preferWalkable: boolean; // Prefer walkable distances
+}
+
+export interface QualityValidationResult {
+  valid: boolean;
+  issue?: string;
+  suggestion?: string;
+  maxDistanceFromCenter?: string;
+  maxWalkDistance?: string;
+}
+
+export interface RouteOptimizationResult {
+  stops: (Venue | Event)[];
+  totalDistance: number;
+  totalWalkTime: number;
+  averageDistanceBetweenStops: number;
+  isLocalSearch?: boolean;
+  maxDistanceFromCenter?: number;
+  distanceWarning?: string;
 }

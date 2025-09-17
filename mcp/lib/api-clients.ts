@@ -209,7 +209,7 @@ private formatPlaces(places: any[], category: string, limit: number): Venue[] {
     // BUILD ACTUAL PHOTO URL HERE
     photo: place.photos?.[0]?.photo_reference 
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${place.photos[0].photo_reference}&key=${this.apiKey}`
-      : null,
+      : undefined,
     // Keep photo references for additional photos if needed
     photoReferences: place.photos?.map((p: any) => p.photo_reference)
   }));
@@ -300,7 +300,24 @@ export class TicketmasterClient {
     return date.toISOString().split('.')[0] + 'Z';
   }
 
+  private lastRequestTime = 0;
+  private minRequestInterval = 250; // 250ms = max 4 requests/second (under 5/sec limit)
+
+  private async enforceRateLimit(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const delay = this.minRequestInterval - timeSinceLastRequest;
+      console.log(`[TicketmasterClient] Rate limiting - waiting ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
+
   async searchEvents(params: EventSearchParams): Promise<Event[]> {
+    await this.enforceRateLimit();
     const {
       location,
       radiusKm = 5,
